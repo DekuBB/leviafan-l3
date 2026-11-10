@@ -13,11 +13,28 @@ const products = [
   { id: 'weekend', name: 'Box Weekend', description: 'Starannie wybrane akcesoria w eleganckim pudełku.', price: 149 },
 ]
 
+const ADMIN_IDS = new Set(['6506504589', '5756373450', '6590919667'])
+const ADMIN_DASHBOARD_URL = 'https://v0-leviafan.vercel.app/admin'
+
 const keyboard = Markup.keyboard([
   ['Konto osobiste', 'Doładuj swoje saldo'],
   ['Kup produkt', 'Opinia'],
   ['Zasady', 'Pomoc i kontakt'],
 ]).resize()
+
+function mainKeyboard(ctx) {
+  if (!ADMIN_IDS.has(String(ctx.from?.id))) return keyboard
+  return Markup.keyboard([
+    ['Konto osobiste', 'Doładuj swoje saldo'],
+    ['Kup produkt', 'Opinia'],
+    ['Zasady', 'Pomoc i kontakt'],
+    ['🔐 Panel administratora'],
+  ]).resize()
+}
+
+function isAdmin(ctx) {
+  return ADMIN_IDS.has(String(ctx.from?.id))
+}
 
 const backHome = Markup.inlineKeyboard([
   [Markup.button.callback('↩️ Wstecz', 'account'), Markup.button.callback('🏠 Dom', 'home')],
@@ -55,8 +72,13 @@ t.me/leviafan5zzz_bot?start=ref_${id}`
 }
 
 bot.use(session())
-bot.start(async (ctx) => ctx.reply(homeText(safeName(ctx)), keyboard))
-bot.command('menu', async (ctx) => ctx.reply(homeText(safeName(ctx)), keyboard))
+bot.start(async (ctx) => ctx.reply(homeText(safeName(ctx)), mainKeyboard(ctx)))
+bot.command('menu', async (ctx) => ctx.reply(homeText(safeName(ctx)), mainKeyboard(ctx)))
+bot.hears('🔐 Panel administratora', async (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('Brak uprawnień.', keyboard)
+  ctx.session.awaitingAdminPassword = true
+  return ctx.reply('Panel administratora jest chroniony. Wpisz hasło dostępu:')
+})
 bot.hears('Konto osobiste', async (ctx) => ctx.reply(accountText(ctx), Markup.inlineKeyboard([
   [Markup.button.callback('Moje referały', 'referrals'), Markup.button.callback('Zakupy', 'orders')],
   [Markup.button.callback('Doładuj saldo', 'topup'), Markup.button.callback('Wymień punkty', 'points')],
@@ -76,7 +98,18 @@ bot.action('products', async (ctx) => { await ctx.answerCbQuery(); return ctx.ed
 bot.action(/^pay:(.+)$/, async (ctx) => { await ctx.answerCbQuery(); const p = products.find((item) => item.id === ctx.session.selectedProduct); if (!p) return ctx.editMessageText('Sesja wygasła. Wybierz produkt ponownie.', productKeyboard()); const id = orderId(); ctx.session.orderId = id; return ctx.editMessageText(`Zamówienie ${id}\n\nProdukt: ${p.name}\nKwota: ${money(p.price)}\nMetoda: ${ctx.match[1].toUpperCase()}\n\nPo potwierdzeniu płatności operator przekaże dalsze informacje. Nie wysyłaj danych wrażliwych na czacie.`, Markup.inlineKeyboard([[Markup.button.callback('Potwierdź zamówienie', 'confirm'), Markup.button.callback('Anuluj', 'home')]])) })
 bot.action('confirm', async (ctx) => { await ctx.answerCbQuery('Zamówienie przyjęte'); return ctx.editMessageText(`Dziękujemy. Zamówienie ${ctx.session.orderId || orderId()} zostało przyjęte do weryfikacji. Operator skontaktuje się z Tobą w tej rozmowie.`, Markup.inlineKeyboard([[Markup.button.callback('🏠 Dom', 'home')]])) })
 for (const action of ['referrals', 'orders', 'points', 'coupon', 'reservations']) bot.action(action, async (ctx) => { await ctx.answerCbQuery(); return ctx.editMessageText('Ta funkcja będzie dostępna po aktywacji konta. Skontaktuj się z operatorem, aby uzyskać pomoc.', backHome) })
-bot.on('text', async (ctx) => { if (ctx.message.text.startsWith('Opinia:')) return ctx.reply('Dziękujemy za opinię. Została przekazana zespołowi.', keyboard); return ctx.reply('Nie rozpoznaję tej opcji. Wybierz przycisk z menu.', keyboard) })
+bot.on('text', async (ctx) => {
+  if (ctx.session.awaitingAdminPassword) {
+    ctx.session.awaitingAdminPassword = false
+    if (!isAdmin(ctx) || ctx.message.text !== process.env.ADMIN_PASSWORD) return ctx.reply('Nieprawidłowe hasło lub brak uprawnień.', mainKeyboard(ctx))
+    return ctx.reply('Dostęp przyznany. Otwórz panel administratora:', Markup.inlineKeyboard([
+      [Markup.button.url('Otwórz dashboard', ADMIN_DASHBOARD_URL)],
+      [Markup.button.callback('🏠 Dom', 'home')],
+    ]))
+  }
+  if (ctx.message.text.startsWith('Opinia:')) return ctx.reply('Dziękujemy za opinię. Została przekazana zespołowi.', mainKeyboard(ctx))
+  return ctx.reply('Nie rozpoznaję tej opcji. Wybierz przycisk z menu.', mainKeyboard(ctx))
+})
 
 app.get('/api/bot', (_req, res) => res.status(200).json({ ok: true, service: 'leviafan-telegram-bot' }))
 app.post('/api/bot', async (req, res) => {
