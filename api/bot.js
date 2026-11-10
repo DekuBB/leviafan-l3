@@ -14,7 +14,7 @@ const products = [
 ]
 
 const ADMIN_IDS = new Set(['6506504589', '5756373450', '6590919667'])
-const ADMIN_DASHBOARD_URL = 'https://v0-leviafan.vercel.app/admin'
+const ADMIN_DASHBOARD_URL = 'https://v0-leviafan.vercel.app/'
 
 const keyboard = Markup.keyboard([
   ['Konto osobiste', 'Doładuj swoje saldo'],
